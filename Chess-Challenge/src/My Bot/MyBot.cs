@@ -1,25 +1,29 @@
-﻿using ChessChallenge.API;
+﻿using System.Collections.Generic;
+using System.Linq;
+using ChessChallenge.API;
 using ChessChallenge.Application;
 
 public class MyBot : IChessBot
 {
     private int _maxDepth = 3;
-    
-    // Avoid allocating memory by storing the board as a field
-    // It also avoid spending extra tokens on passing the board as a parameter
+
+    // Used to save tokens and avoid memory allocation.
     private Board _board;
-    private int[] _pieceWeights = { 0, 100, 300, 300, 500, 900, 10000 };
+    private readonly int[] _pieceWeights = { 0, 100, 300, 300, 500, 900, 10000 };
 
     public Move Think(Board board, Timer timer)
     {
         _board = board;
-        
+        //_pieces = board.GetAllPieceLists().SelectMany(x => x).ToList();
+        //_moves = board.GetLegalMoves().ToList();
+
+        // Negamax algorithm
         Move bestMove = new();
         int bestScore = int.MinValue;
         foreach (Move move in board.GetLegalMoves())
         {
             board.MakeMove(move);
-            int score = -NegaMax(_maxDepth);
+            int score = -AlpaBeta(int.MinValue, int.MaxValue, _maxDepth);
             board.UndoMove(move);
             if (score > bestScore)
             {
@@ -31,19 +35,26 @@ public class MyBot : IChessBot
         return bestMove;
     }
 
-    private int NegaMax(int depth)
+    private int AlpaBeta(int alpha, int beta, int depth)
     {
+        int bestScore = int.MinValue;
         if (depth == 0)
             return EvaluateMaterial();
 
-        int bestScore = int.MinValue;
         foreach (Move move in _board.GetLegalMoves())
         {
             _board.MakeMove(move);
-            int score = -NegaMax(depth - 1);
+            int score = -AlpaBeta(-alpha, -beta, depth - 1);
             _board.UndoMove(move);
+            // fail-soft beta-cutoff
+            // if (score >= beta)
+                // return score;
             if (score > bestScore)
+            {
                 bestScore = score;
+                if (score > alpha)
+                    alpha = score;
+            }
         }
 
         return bestScore;
