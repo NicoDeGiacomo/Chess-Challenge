@@ -5,7 +5,7 @@ using ChessChallenge.Application;
 
 public class MyBot : IChessBot
 {
-    private int _maxDepth = 3;
+    private int _maxDepth = 0;
 
     // Used to save tokens and avoid memory allocation.
     private Board _board;
@@ -14,17 +14,15 @@ public class MyBot : IChessBot
     public Move Think(Board board, Timer timer)
     {
         _board = board;
-        //_pieces = board.GetAllPieceLists().SelectMany(x => x).ToList();
-        //_moves = board.GetLegalMoves().ToList();
 
         // Negamax algorithm
         Move bestMove = new();
         int bestScore = int.MinValue;
-        foreach (Move move in board.GetLegalMoves())
+        foreach (Move move in _board.GetLegalMoves())
         {
-            board.MakeMove(move);
+            _board.MakeMove(move);
             int score = -AlpaBeta(int.MinValue, int.MaxValue, _maxDepth);
-            board.UndoMove(move);
+            _board.UndoMove(move);
             if (score > bestScore)
             {
                 bestScore = score;
@@ -37,30 +35,47 @@ public class MyBot : IChessBot
 
     private int AlpaBeta(int alpha, int beta, int depth)
     {
-        int bestScore = int.MinValue;
         if (depth == 0)
-            return EvaluateMaterial();
+            return QuiescenceSearch(alpha, beta);
 
         foreach (Move move in _board.GetLegalMoves())
         {
             _board.MakeMove(move);
-            int score = -AlpaBeta(-alpha, -beta, depth - 1);
+            int score = -AlpaBeta(-beta, -alpha, depth - 1);
             _board.UndoMove(move);
-            // fail-soft beta-cutoff
-            // if (score >= beta)
-                // return score;
-            if (score > bestScore)
-            {
-                bestScore = score;
-                if (score > alpha)
-                    alpha = score;
-            }
+            if (score >= beta)
+                return beta;
+            if (score > alpha)
+                alpha = score;
         }
 
-        return bestScore;
+        return alpha;
     }
 
-    private int EvaluateMaterial()
+    private int QuiescenceSearch(int alpha, int beta)
+    {
+        int standingPat = Evaluate();
+        if( standingPat >= beta )
+            return beta;
+        if( alpha < standingPat )
+            alpha = standingPat;
+
+        foreach (var move in _board.GetLegalMoves().Where(x => x.IsCapture))
+        {
+            _board.MakeMove(move);
+            int score = -QuiescenceSearch(-beta, -alpha);
+            _board.UndoMove(move);
+            
+            if( score >= beta )
+                return beta;
+            if( score > alpha )
+                alpha = score;
+        }
+        
+        return alpha;
+    }
+
+    private int Evaluate()
     {
         int score = 0;
         foreach (PieceList pieceList in _board.GetAllPieceLists())
