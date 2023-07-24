@@ -1,88 +1,65 @@
-﻿using System.Collections.Generic;
-using System.Linq;
+﻿using System;
 using ChessChallenge.API;
 using ChessChallenge.Application;
 
 public class MyBot : IChessBot
 {
-    private int _maxDepth = 0;
-
-    // Used to save tokens and avoid memory allocation.
+    private const int MaxDepth = 4;
+    private readonly int[] _pieceWeights = { 0, 100, 320, 330, 500, 900, 20000 };
     private Board _board;
-    private readonly int[] _pieceWeights = { 0, 100, 300, 300, 500, 900, 10000 };
+
+    private readonly int[] _pawnTable =
+    {
+        0, 0, 0, 0, 0, 0, 0, 0,
+        5, 10, 10, -20, -20, 10, 10, 5,
+        5, -5, -10, 0, 0, -10, -5, 5,
+        0, 0, 0, 20, 20, 0, 0, 0,
+        5, 5, 10, 25, 25, 10, 5, 5,
+        10, 10, 20, 30, 30, 20, 10, 10,
+        50, 50, 50, 50, 50, 50, 50, 50,
+        0, 0, 0, 0, 0, 0, 0, 0
+    };
 
     public Move Think(Board board, Timer timer)
     {
         _board = board;
-
-        // Negamax algorithm
-        Move bestMove = new();
-        int bestScore = int.MinValue;
-        foreach (Move move in _board.GetLegalMoves())
-        {
-            _board.MakeMove(move);
-            int score = -AlpaBeta(int.MinValue, int.MaxValue, _maxDepth);
-            _board.UndoMove(move);
-            if (score > bestScore)
-            {
-                bestScore = score;
-                bestMove = move;
-            }
-        }
-
-        return bestMove;
-    }
-
-    private int AlpaBeta(int alpha, int beta, int depth)
-    {
-        if (depth == 0)
-            return QuiescenceSearch(alpha, beta);
-
-        foreach (Move move in _board.GetLegalMoves())
-        {
-            _board.MakeMove(move);
-            int score = -AlpaBeta(-beta, -alpha, depth - 1);
-            _board.UndoMove(move);
-            if (score >= beta)
-                return beta;
-            if (score > alpha)
-                alpha = score;
-        }
-
-        return alpha;
-    }
-
-    private int QuiescenceSearch(int alpha, int beta)
-    {
-        int standingPat = Evaluate();
-        if( standingPat >= beta )
-            return beta;
-        if( alpha < standingPat )
-            alpha = standingPat;
-
-        foreach (var move in _board.GetLegalMoves().Where(x => x.IsCapture))
-        {
-            _board.MakeMove(move);
-            int score = -QuiescenceSearch(-beta, -alpha);
-            _board.UndoMove(move);
-            
-            if( score >= beta )
-                return beta;
-            if( score > alpha )
-                alpha = score;
-        }
-        
-        return alpha;
+        Span<Move> moves = stackalloc Move[256];
+        _board.GetLegalMovesNonAlloc(ref moves);
+        ConsoleHelper.Log("Evaluation: " + Evaluate());
+        return moves[0];
     }
 
     private int Evaluate()
     {
-        int score = 0;
-        foreach (PieceList pieceList in _board.GetAllPieceLists())
-        foreach (Piece piece in pieceList)
-            score += (piece.IsWhite ? 1 : -1) * _pieceWeights[(int)piece.PieceType];
+        if (_board.IsInCheckmate())
+            return (_board.IsWhiteToMove ? 1 : -1) * -1000000;
+        if (_board.IsDraw())
+            return 0;
 
-        return score * (_board.IsWhiteToMove ? 1 : -1);
-        // return score;
+
+        int materialScore = 0;
+        for (int i = 0; i < 8; i++)
+        for (int j = 0; j < 8; j++)
+        {
+            Piece piece = _board.GetPiece(new Square(i, j));
+            if (piece.PieceType != PieceType.None)
+                materialScore += _pieceWeights[(int)piece.PieceType] * (piece.IsWhite ? 1 : -1);
+        }
+
+        int whitePawnScore = 0;
+        foreach (Piece pawn in _board.GetPieceList(PieceType.Pawn, true))
+        {
+            whitePawnScore += _pawnTable[pawn.Square.Index];
+        }
+
+        int blackPawnScore = 0;
+        foreach (Piece pawn in _board.GetPieceList(PieceType.Pawn, false))
+        {
+            blackPawnScore -= _pawnTable[63 - pawn.Square.Index];
+        }
+
+        ConsoleHelper.Log("materialScore: " + materialScore + " whitePawnScore: " + whitePawnScore +
+                          " blackPawnScore: " + blackPawnScore);
+        return materialScore + whitePawnScore + blackPawnScore;
     }
 }
