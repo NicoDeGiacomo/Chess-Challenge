@@ -34,6 +34,8 @@ public class MyBot : IChessBot
         {
             _board.MakeMove(move);
             int score = -AlphaBeta(-beta, -alpha, MaxDepth - 1);
+            _board.UndoMove(move);
+
             if (score > bestScore)
             {
                 bestScore = score;
@@ -42,8 +44,6 @@ public class MyBot : IChessBot
 
             if (score > alpha)
                 alpha = score;
-            
-            _board.UndoMove(move);
         }
 
 
@@ -54,29 +54,38 @@ public class MyBot : IChessBot
     private int AlphaBeta(int alpha, int beta, int depth)
     {
         // ConsoleHelper.Log("AlphaBeta - " + alpha + " " + beta + " " + depth);
-        int bestScore = -int.MaxValue;
+        bool principalVariationFound = false;
         if (depth == 0)
             return Quiesce(alpha, beta);
-        
+
         Span<Move> moves = stackalloc Move[256];
         _board.GetLegalMovesNonAlloc(ref moves);
         foreach (Move move in moves)
         {
             _board.MakeMove(move);
-            int score = -AlphaBeta(-beta, -alpha, depth - 1);
+            int score;
+            if (principalVariationFound)
+            {
+                score = -AlphaBeta(-alpha - 1, -alpha, depth - 1);
+                if (score > alpha && score < beta)
+                    score = -AlphaBeta(-beta, -alpha, depth - 1);
+            }
+            else
+                score = -AlphaBeta(-beta, -alpha, depth - 1);
+
             _board.UndoMove(move);
 
             if (score >= beta)
-                return score;
-
-            if (score > bestScore)
-                bestScore = score;
+                return beta;
 
             if (score > alpha)
+            {
                 alpha = score;
+                principalVariationFound = true;
+            }
         }
 
-        return bestScore;
+        return alpha;
     }
 
     private int Quiesce(int alpha, int beta)
